@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tinychat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header" role="banner" aria-label="Tinychat header">
+    <h1 id="app-title">Tinychat</h1>
+    <section class="presence-panel" aria-labelledby="online-users-heading">
+      <h2 id="online-users-heading">Online</h2>
+      <ul id="user-list" class="user-list" role="list" aria-label="Online users" aria-live="polite"></ul>
+    </section>
+  </header>
+  <main role="main" aria-label="Chat area">
+    <div id="log" class="log" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages"></div>
+    <form id="chat-form" aria-label="Send message">
+      <label for="input" class="sr-only">Message</label>
+      <input id="input" type="text" autocomplete="off" placeholder="Message or /who, /clear, /name &lt;new&gt;" aria-label="Chat message input">
+      <button type="submit" aria-label="Send message">Send</button>
+    </form>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
