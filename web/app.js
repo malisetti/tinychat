@@ -1,6 +1,8 @@
 (function () {
+  const maxNameLength = 32;
+  const maxTextLength = 500;
   const params = new URLSearchParams(location.search);
-  let displayName = params.get("name") || "anon" + Math.floor(Math.random() * 1000);
+  let displayName = normalizeName(params.get("name") || "anon" + Math.floor(Math.random() * 1000));
   const baseTitle = "Tinychat";
   let unread = 0;
   let ws = null;
@@ -17,6 +19,19 @@
   function wsURL() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     return proto + "//" + location.host + "/ws?name=" + encodeURIComponent(displayName);
+  }
+
+  function truncate(s, limit) {
+    return Array.from(String(s)).slice(0, limit).join("");
+  }
+
+  function normalizeName(name) {
+    const trimmed = String(name || "").trim();
+    return truncate(trimmed || "anon", maxNameLength);
+  }
+
+  function normalizeText(text) {
+    return truncate(String(text || "").trim(), maxTextLength);
   }
 
   function setTitle() {
@@ -128,6 +143,8 @@
   }
 
   function sendChat(text) {
+    text = normalizeText(text);
+    if (!text) return;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       appendSystem("Not connected.");
       return;
@@ -136,6 +153,7 @@
   }
 
   function sendRename(newName) {
+    newName = normalizeName(newName);
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     displayName = newName;
     ws.send(JSON.stringify({ type: "rename", name: newName }));
@@ -159,7 +177,7 @@
       return true;
     }
     if (cmd === "/name" && parts.length >= 2) {
-      sendRename(parts.slice(1).join(" "));
+      sendRename(raw.trim().slice(parts[0].length));
       return true;
     }
     return false;
@@ -167,7 +185,7 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    const text = input.value.trim();
+    const text = normalizeText(input.value);
     if (!text) return;
     input.value = "";
     if (text.startsWith("/")) {

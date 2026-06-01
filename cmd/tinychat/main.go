@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -14,6 +15,11 @@ import (
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
+
+const (
+	maxNameLength = 32
+	maxTextLength = 500
+)
 
 type client struct {
 	conn *websocket.Conn
@@ -27,6 +33,30 @@ type hub struct {
 
 func newHub() *hub {
 	return &hub{clients: make(map[*client]struct{})}
+}
+
+func truncateRunes(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+	return string(runes[:limit])
+}
+
+func normalizeName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "anon"
+	}
+	return truncateRunes(name, maxNameLength)
+}
+
+func normalizeText(text string) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", false
+	}
+	return truncateRunes(text, maxTextLength), true
 }
 
 func (h *hub) userList() []string {
@@ -86,30 +116,18 @@ func (h *hub) broadcastSystem(text string) {
 	h.broadcast(payload)
 }
 
-func (h *hub) rename(oldName, newName string) {
+func (h *hub) rename(c *client, newName string) {
 	h.mu.Lock()
-	for c := range h.clients {
-		if c.name == oldName {
-			c.name = newName
-			break
-		}
-	}
+	oldName := c.name
+	c.name = newName
 	h.mu.Unlock()
 	h.broadcastPresence()
 	h.broadcastSystem(fmt.Sprintf("%s is now %s", oldName, newName))
 }
 
-func main() {
-	addr := flag.String("addr", ":8080", "listen address")
-	flag.Parse()
-
-	h := newHub()
-	http.Handle("/", http.FileServer(http.Dir("web")))
-	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		name := r.URL.Query().Get("name")
-		if name == "" {
-			name = "anon"
-		}
+func handleWS(h *hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := normalizeName(r.URL.Query().Get("name"))
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -136,24 +154,33 @@ func main() {
 			}
 			switch incoming.Type {
 			case "rename":
-				if incoming.Name != "" && incoming.Name != c.name {
-					old := c.name
-					c.name = incoming.Name
-					h.rename(old, c.name)
+				name := normalizeName(incoming.Name)
+				if name != c.name {
+					h.rename(c, name)
 				}
 			case "chat":
-				if incoming.Text == "" {
+				text, ok := normalizeText(incoming.Text)
+				if !ok {
 					continue
 				}
 				out, _ := json.Marshal(map[string]string{
 					"type": "chat",
 					"from": c.name,
-					"text": incoming.Text,
+					"text": text,
 				})
 				h.broadcast(out)
 			}
 		}
-	})
+	}
+}
+
+func main() {
+	addr := flag.String("addr", ":8080", "listen address")
+	flag.Parse()
+
+	h := newHub()
+	http.Handle("/", http.FileServer(http.Dir("web")))
+	http.HandleFunc("/ws", handleWS(h))
 
 	log.Printf("tinychat listening on %s", *addr)
 	log.Fatal(http.ListenAndServe(*addr, nil))
